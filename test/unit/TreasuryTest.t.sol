@@ -6,7 +6,6 @@ import {Treasury} from "../../src/Treasury.sol";
 import {MockERC20Votes} from "../mocks/MockERC20Votes.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-
 // Contract that rejects ETH to test ETHTransferFailed
 contract Rejector {
     receive() external payable {
@@ -21,19 +20,11 @@ contract TreasuryTest is Test {
     address public timelock = address(0x123);
     address public user = address(0x456);
 
-    event ERC20Transferred(
-        address indexed token,
-        address indexed to,
-        uint256 indexed amount
-    );
+    event ERC20Transferred(address indexed token, address indexed to, uint256 indexed amount);
 
-    event ETHTransferred(
-        address indexed to,
-        uint256 indexed amount
-    );
+    event ETHTransferred(address indexed to, uint256 indexed amount);
 
     function setUp() public {
-
         vm.prank(timelock);
         treasury = new Treasury(timelock);
 
@@ -122,58 +113,50 @@ contract TreasuryTest is Test {
         treasury.transferETH(payable(address(rejector)), 1 ether);
     }
 
-
     function testDelegateTokenDelegatesVotingPower() public {
+        address delegatee = makeAddr("delegatee");
 
-    address delegatee = makeAddr("delegatee");
+        // Mint tokens to Treasury
+        token.mint(address(treasury), 1_000e18);
 
-    // Mint tokens to Treasury
-    token.mint(address(treasury), 1_000e18);
+        // No voting power before delegation
+        assertEq(token.getVotes(delegatee), 0);
 
-    // No voting power before delegation
-    assertEq(token.getVotes(delegatee), 0);
+        vm.prank(address(timelock)); // treasury owner
 
-    vm.prank(address(timelock)); // treasury owner
+        treasury.delegateToken(address(token), delegatee);
 
-    treasury.delegateToken(address(token), delegatee);
+        assertEq(token.getVotes(delegatee), token.balanceOf(address(treasury)));
+    }
 
-    assertEq(token.getVotes(delegatee), token.balanceOf(address(treasury)));
-}
+    function testDelegateTokenRevertsIfCallerNotOwner() public {
+        address attacker = makeAddr("attacker");
+        address delegatee = makeAddr("delegatee");
 
-function testDelegateTokenRevertsIfCallerNotOwner() public {
+        vm.prank(attacker);
 
-    address attacker = makeAddr("attacker");
-    address delegatee = makeAddr("delegatee");
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, attacker));
 
-    vm.prank(attacker);
+        treasury.delegateToken(address(token), delegatee);
+    }
 
-    vm.expectRevert(
-        abi.encodeWithSelector(
-            Ownable.OwnableUnauthorizedAccount.selector,
-            attacker
-        )
-    );
+    function testDelegateTokenChangesDelegatee() public {
+        address alice = makeAddr("alice");
+        address bob = makeAddr("bob");
 
-    treasury.delegateToken(address(token), delegatee);
-}
+        uint256 balance = token.balanceOf(address(treasury));
 
-function testDelegateTokenChangesDelegatee() public {
-    address alice = makeAddr("alice");
-    address bob = makeAddr("bob");
+        vm.startPrank(address(timelock));
 
-    uint256 balance = token.balanceOf(address(treasury));
+        treasury.delegateToken(address(token), alice);
 
-    vm.startPrank(address(timelock));
+        assertEq(token.getVotes(alice), balance);
 
-    treasury.delegateToken(address(token), alice);
+        treasury.delegateToken(address(token), bob);
 
-    assertEq(token.getVotes(alice), balance);
+        assertEq(token.getVotes(alice), 0);
+        assertEq(token.getVotes(bob), balance);
 
-    treasury.delegateToken(address(token), bob);
-
-    assertEq(token.getVotes(alice), 0);
-    assertEq(token.getVotes(bob), balance);
-
-    vm.stopPrank();
-}
+        vm.stopPrank();
+    }
 }

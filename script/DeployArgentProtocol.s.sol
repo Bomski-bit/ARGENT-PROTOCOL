@@ -73,7 +73,6 @@ contract DeployArgentProtocol is Script {
     // =============================================================
 
     function run() external {
-
         deploy();
 
         _logDeployment();
